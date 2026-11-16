@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ZapChat</title>
+<style>
+*{box-sizing:border-box;margin:0;font-family:sans-serif}
+body{background:#efeae2;height:100vh;display:flex;flex-direction:column}
+header{background:#075e54;color:#fff;padding:14px;display:flex;justify-content:space-between;align-items:center;font-size:18px}
+button{background:#25d366;color:#fff;border:0;padding:10px 14px;border-radius:20px;font-size:15px}
+input{padding:12px;border:1px solid #ccc;border-radius:20px;flex:1;font-size:16px}
+.screen{display:none;flex:1;flex-direction:column;overflow:hidden}.screen.on{display:flex}
+#login{justify-content:center;gap:12px;padding:24px;background:#fff}
+.item{padding:14px;border-bottom:1px solid #ddd;background:#fff}
+#list,#msgs{flex:1;overflow:auto;padding:8px}
+.m{max-width:75%;padding:8px 12px;margin:4px 0;border-radius:10px;background:#fff;word-wrap:break-word}
+.me{background:#dcf8c6;margin-left:auto}
+.bar{display:flex;gap:8px;padding:8px;background:#f0f0f0}
+</style></head><body>
+<div id="login" class="screen on">
+ <h2>ZapChat</h2>
+ <input id="ph" placeholder="+221 77 000 00 00" type="tel">
+ <div id="rc"></div>
+ <button id="send">Recevoir le code</button>
+ <input id="code" placeholder="Code SMS" style="display:none">
+ <button id="ok" style="display:none">Valider</button>
+</div>
+<div id="home" class="screen">
+ <header>ZapChat <span id="me"></span></header>
+ <div class="bar"><input id="to" placeholder="Numéro du contact (+221...)"><button id="go">Chat</button></div>
+ <div id="list"></div>
+</div>
+<div id="chat" class="screen">
+ <header><button id="back">←</button><span id="who"></span><span></span></header>
+ <div id="msgs"></div>
+ <div class="bar"><input id="txt" placeholder="Message"><button id="snd">➤</button></div>
+</div>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {getAuth,RecaptchaVerifier,signInWithPhoneNumber,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {getFirestore,collection,addDoc,query,orderBy,onSnapshot,serverTimestamp,setDoc,doc} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+// COLLE ICI TA CONFIG FIREBASE
+const firebaseConfig={apiKey:"",authDomain:"",projectId:"",storageBucket:"",messagingSenderId:"",appId:""};
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+const $=i=>document.getElementById(i),show=s=>{document.querySelectorAll(".screen").forEach(e=>e.classList.remove("on"));$(s).classList.add("on")};
+let conf,myPhone,peer,unsub;
+window.rv=new RecaptchaVerifier(auth,"rc",{size:"normal"});
+$("send").onclick=async()=>{try{conf=await signInWithPhoneNumber(auth,$("ph").value.trim(),window.rv);$("code").style.display=$("ok").style.display="block"}catch(e){alert(e.message)}};
+$("ok").onclick=async()=>{try{await conf.confirm($("code").value)}catch(e){alert(e.message)}};
+onAuthStateChanged(auth,u=>{if(u){myPhone=u.phoneNumber;$("me").textContent=myPhone;setDoc(doc(db,"users",myPhone),{phone:myPhone},{merge:true});show("home");loadList()}else show("login")});
+const cid=(a,b)=>[a,b].sort().join("_");
+function loadList(){onSnapshot(collection(db,"users"),s=>{$("list").innerHTML="";s.forEach(d=>{if(d.id===myPhone)return;const e=document.createElement("div");e.className="item";e.textContent=d.id;e.onclick=()=>open(d.id);$("list").appendChild(e)})})}
+$("go").onclick=()=>{const p=$("to").value.trim();if(p)open(p)};
+function open(p){peer=p;$("who").textContent=p;show("chat");unsub&&unsub();
+ unsub=onSnapshot(query(collection(db,"chats",cid(myPhone,p),"messages"),orderBy("t")),s=>{$("msgs").innerHTML="";s.forEach(d=>{const m=d.data(),e=document.createElement("div");e.className="m"+(m.from===myPhone?" me":"");e.textContent=m.text;$("msgs").appendChild(e)});$("msgs").scrollTop=1e9})}
+$("snd").onclick=async()=>{const t=$("txt").value.trim();if(!t)return;$("txt").value="";await addDoc(collection(db,"chats",cid(myPhone,peer),"messages"),{from:myPhone,text:t,t:serverTimestamp()})};
+$("back").onclick=()=>{unsub&&unsub();show("home")};
+</script></body></html>
